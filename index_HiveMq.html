@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Casa Inteligente</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<!-- MQTT -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #ECEFF4;
+  color: #2E3440;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.header {
+  text-align: center;
+  padding: 10px;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.esp {
+  text-align: center;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.card {
+  border-radius: 18px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+}
+
+.luz { border-left: 5px solid #4CC9F0; }
+.seguranca { border-left: 5px solid #F72585; }
+.sistema { border-left: 5px solid #4895EF; }
+
+.card.on {
+  background: #4CC9F0;
+  color: white;
+  transform: scale(0.97);
+}
+
+.seguranca.on {
+  background: #E63946;
+}
+
+.icon {
+  font-size: 26px;
+  width: 30px;
+}
+
+.nome {
+  flex: 1;
+}
+
+.footer {
+  height: 50px;
+  background: #FFFFFF;
+  border-top: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.footer i {
+  color: #4CC9F0;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">🏠 Casa Inteligente</div>
+<div class="esp" id="espStatus">ESP: Conectando...</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="footer">
+  <i class="fa-solid fa-code"></i>
+  Powered by <strong>D.S.Montenegro</strong> - DMX
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+const broker = "wss://73102ccadf274c048b5834e6eb1dd292.s1.eu.hivemq.cloud:8884/mqtt";
+
+const options = {
+  username: "Monte",
+  password: "Davi2013$",
+  reconnectPeriod: 3000
+};
+
+const client = mqtt.connect(broker, options);
+
+let online = false;
+let lastSeen = 0;
+
+const dispositivos = [
+  {nome:"Corredor", topico:"casa/corredor", icon:"fa-lightbulb", tipo:"luz"},
+  {nome:"Escada", topico:"casa/escada", icon:"fa-stairs", tipo:"luz"},
+  {nome:"Banheiro", topico:"casa/banheiro", icon:"fa-shower", tipo:"luz"},
+  {nome:"Quarto", topico:"casa/quarto", icon:"fa-bed", tipo:"luz"},
+  {nome:"Refletor", topico:"casa/refletor", icon:"fa-sun", tipo:"luz"},
+  {nome:"Sirene", topico:"casa/sirene", icon:"fa-bell", tipo:"seguranca"},
+  {nome:"Tudo", topico:"casa/tudo", icon:"fa-bolt", tipo:"sistema"},
+  {nome:"LED ESP", topico:"casa/led", icon:"fa-microchip", tipo:"sistema"},
+  {nome:"Auto", topico:"casa/auto", icon:"fa-robot", tipo:"sistema"}
+];
+
+const grid = document.getElementById("grid");
+
+// criar cards
+dispositivos.forEach((d, i) => {
+  grid.innerHTML += `
+    <div class="card ${d.tipo}" id="card${i}" onclick="toggle(${i})">
+      <div class="icon"><i class="fa-solid ${d.icon}"></i></div>
+      <div class="nome">${d.nome}</div>
+    </div>
+  `;
+});
+
+// MQTT
+client.on("connect", () => {
+  console.log("MQTT conectado");
+  client.subscribe("casa/status");
+});
+
+client.on("message", (topic, message) => {
+  const msg = message.toString();
+
+  if(topic === "casa/status"){
+    lastSeen = Date.now();
+
+    if(msg === "online"){
+      setOnline(true);
+    } else {
+      setOnline(false);
+    }
+  }
+});
+
+// STATUS
+function setOnline(state){
+  online = state;
+
+  const el = document.getElementById("espStatus");
+
+  if(state){
+    el.innerText = "ESP: ONLINE 🟢";
+    habilitarCards(true);
+  } else {
+    el.innerText = "ESP: OFFLINE 🔴";
+    habilitarCards(false);
+  }
+}
+
+// BLOQUEIO
+function habilitarCards(status){
+  dispositivos.forEach((_, i)=>{
+    let card = document.getElementById(`card${i}`);
+
+    if(status){
+      card.style.opacity = "1";
+      card.style.pointerEvents = "auto";
+    } else {
+      card.style.opacity = "0.4";
+      card.style.pointerEvents = "none";
+    }
+  });
+}
+
+// TOQUE
+window.toggle = function(i){
+
+  if(!online) return;
+
+  let d = dispositivos[i];
+  let card = document.getElementById(`card${i}`);
+
+  let ligado = card.classList.contains("on") ? 0 : 1;
+
+  atualizarVisual(i, ligado);
+
+  if(d.topico === "casa/sirene"){
+    client.publish(d.topico, "1");
+
+    if(navigator.vibrate) navigator.vibrate(100);
+
+    setTimeout(()=>{
+      client.publish(d.topico, "0");
+      atualizarVisual(i, 0);
+    },2000);
+
+    return;
+  }
+
+  if(navigator.vibrate) navigator.vibrate(50);
+
+  client.publish(d.topico, ligado.toString());
+}
+
+// VISUAL
+function atualizarVisual(i, ligado){
+  let card = document.getElementById(`card${i}`);
+  ligado ? card.classList.add("on") : card.classList.remove("on");
+}
+
+// TIMEOUT OFFLINE
+setInterval(()=>{
+  if(Date.now() - lastSeen > 10000){
+    setOnline(false);
+  }
+},2000);
+
+// inicia travado
+setOnline(false);
+
+// PWA
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js');
+}
+
+});
+</script>
+
+</body>
+</html>
