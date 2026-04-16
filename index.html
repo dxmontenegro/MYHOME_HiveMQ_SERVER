@@ -41,7 +41,6 @@ body {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   padding: 12px;
-  overflow-y: auto;
 }
 
 .card {
@@ -49,10 +48,14 @@ body {
   padding: 18px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
   background: #FFFFFF;
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+}
+
+.card:active {
+  transform: scale(0.96);
 }
 
 .luz { border-left: 5px solid #4CC9F0; }
@@ -62,20 +65,10 @@ body {
 .card.on {
   background: #4CC9F0;
   color: white;
-  transform: scale(0.97);
 }
 
 .seguranca.on {
   background: #E63946;
-}
-
-.icon {
-  font-size: 26px;
-  width: 30px;
-}
-
-.nome {
-  flex: 1;
 }
 
 .footer {
@@ -86,53 +79,43 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  gap: 6px;
-}
-
-.footer i {
-  color: #4CC9F0;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">🏠My Home - By Monte(HiveMqtt)</div>
+<div class="header">🏠 My Home - HiveMQ</div>
 <div class="esp" id="espStatus">ESP: Conectando...</div>
 
 <div class="grid" id="grid"></div>
 
 <div class="footer">
-  <i class="fa-solid fa-code"></i>
-  Powered by <strong>D.S.Montenegro</strong> - DMX
+  Powered by <strong>D.S.Montenegro</strong>
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-const broker = "wss://73102ccadf274c048b5834e6eb1dd292.s1.eu.hivemq.cloud:8884/mqtt";
-
-const options = {
+const client = mqtt.connect("wss://73102ccadf274c048b5834e6eb1dd292.s1.eu.hivemq.cloud:8884/mqtt", {
   username: "Monte",
   password: "Davi2013$",
   reconnectPeriod: 3000
-};
-
-const client = mqtt.connect(broker, options);
+});
 
 let online = false;
 let lastSeen = 0;
 
 const dispositivos = [
-  {nome:"Corredor", topico:"casa/corredor", icon:"fa-lightbulb", tipo:"luz"},
-  {nome:"Escada", topico:"casa/escada", icon:"fa-stairs", tipo:"luz"},
-  {nome:"Banheiro", topico:"casa/banheiro", icon:"fa-shower", tipo:"luz"},
-  {nome:"Quarto", topico:"casa/quarto", icon:"fa-bed", tipo:"luz"},
-  {nome:"Refletor", topico:"casa/refletor", icon:"fa-sun", tipo:"luz"},
-  {nome:"Sirene", topico:"casa/sirene", icon:"fa-bell", tipo:"seguranca"},
-  {nome:"Tudo", topico:"casa/tudo", icon:"fa-bolt", tipo:"sistema"},
-  {nome:"LED ESP", topico:"casa/led", icon:"fa-microchip", tipo:"sistema"},
-  {nome:"Auto", topico:"casa/auto", icon:"fa-robot", tipo:"sistema"}
+  {nome:"Corredor", base:"casa/corredor", tipo:"luz"},
+  {nome:"Escada", base:"casa/escada", tipo:"luz"},
+  {nome:"Banheiro", base:"casa/banheiro", tipo:"luz"},
+  {nome:"Quarto", base:"casa/quarto", tipo:"luz"},
+  {nome:"Refletor", base:"casa/refletor", tipo:"luz"},
+  {nome:"Sirene", base:"casa/sirene", tipo:"seguranca"},
+  {nome:"Tudo", base:"casa/tudo", tipo:"sistema"},
+  {nome:"LED ESP", base:"casa/led", tipo:"sistema"},
+  {nome:"Auto", base:"casa/auto", tipo:"sistema"}
 ];
 
 const grid = document.getElementById("grid");
@@ -140,113 +123,100 @@ const grid = document.getElementById("grid");
 // criar cards
 dispositivos.forEach((d, i) => {
   grid.innerHTML += `
-    <div class="card ${d.tipo}" id="card${i}" onclick="toggle(${i})">
-      <div class="icon"><i class="fa-solid ${d.icon}"></i></div>
-      <div class="nome">${d.nome}</div>
+    <div class="card ${d.tipo}" id="card${i}">
+      ${d.nome}
     </div>
   `;
 });
 
-// MQTT
-client.on("connect", () => {
-  console.log("MQTT conectado");
-  client.subscribe("casa/status");
+// clique com resposta instantânea
+dispositivos.forEach((d, i) => {
+  document.getElementById(`card${i}`).addEventListener("click", () => {
+
+    if(!online) return;
+
+    let card = document.getElementById(`card${i}`);
+    let ligado = card.classList.contains("on") ? false : true;
+
+    // ⚡ resposta imediata
+    atualizarVisual(i, ligado);
+
+    // 🚨 sirene
+    if(d.base === "casa/sirene"){
+      client.publish(`${d.base}/set`, "1");
+
+      if(navigator.vibrate) navigator.vibrate(100);
+
+      setTimeout(()=> {
+        client.publish(`${d.base}/set`, "0");
+      }, 2000);
+
+      return;
+    }
+
+    if(navigator.vibrate) navigator.vibrate(50);
+
+    client.publish(`${d.base}/set`, ligado ? "1" : "0");
+  });
 });
 
-client.on("message", (topic, message) => {
-  const msg = message.toString();
+// MQTT conectado
+client.on("connect", () => {
+  client.subscribe("casa/status");
+  client.subscribe("casa/+/state");
+});
 
+// recebimento
+client.on("message", (topic, message) => {
+
+  let msg = message.toString();
+
+  // STATUS
   if(topic === "casa/status"){
     lastSeen = Date.now();
+    setOnline(msg === "online");
+  }
 
-    if(msg === "online"){
-      setOnline(true);
-    } else {
-      setOnline(false);
+  // ESTADO REAL
+  if(topic.includes("/state")){
+    let nome = topic.split("/")[1];
+    let index = dispositivos.findIndex(d => d.base.includes(nome));
+
+    if(index !== -1){
+      atualizarVisual(index, msg == "1");
     }
   }
 });
 
-// STATUS
-function setOnline(state){
-  online = state;
-
-  const el = document.getElementById("espStatus");
-
-  if(state){
-    el.innerText = "ESP: ONLINE 🟢";
-    habilitarCards(true);
-  } else {
-    el.innerText = "ESP: OFFLINE 🔴";
-    habilitarCards(false);
-  }
-}
-
-// BLOQUEIO
-function habilitarCards(status){
-  dispositivos.forEach((_, i)=>{
-    let card = document.getElementById(`card${i}`);
-
-    if(status){
-      card.style.opacity = "1";
-      card.style.pointerEvents = "auto";
-    } else {
-      card.style.opacity = "0.4";
-      card.style.pointerEvents = "none";
-    }
-  });
-}
-
-// TOQUE
-window.toggle = function(i){
-
-  if(!online) return;
-
-  let d = dispositivos[i];
-  let card = document.getElementById(`card${i}`);
-
-  let ligado = card.classList.contains("on") ? 0 : 1;
-
-  atualizarVisual(i, ligado);
-
-  if(d.topico === "casa/sirene"){
-    client.publish(d.topico, "1");
-
-    if(navigator.vibrate) navigator.vibrate(100);
-
-    setTimeout(()=>{
-      client.publish(d.topico, "0");
-      atualizarVisual(i, 0);
-    },2000);
-
-    return;
-  }
-
-  if(navigator.vibrate) navigator.vibrate(50);
-
-  client.publish(d.topico, ligado.toString());
-}
-
-// VISUAL
+// visual
 function atualizarVisual(i, ligado){
   let card = document.getElementById(`card${i}`);
   ligado ? card.classList.add("on") : card.classList.remove("on");
 }
 
-// TIMEOUT OFFLINE
+// status
+function setOnline(state){
+  online = state;
+
+  document.getElementById("espStatus").innerText =
+    state ? "ESP: ONLINE 🟢" : "ESP: OFFLINE 🔴";
+
+  dispositivos.forEach((_, i)=>{
+    let card = document.getElementById(`card${i}`);
+    card.style.opacity = state ? "1" : "0.4";
+    card.style.pointerEvents = state ? "auto" : "none";
+  });
+}
+
+// timeout offline
 setInterval(()=>{
   if(Date.now() - lastSeen > 10000){
     setOnline(false);
   }
 },2000);
 
-// inicia travado
+// inicia
 setOnline(false);
-
-// PWA
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js');
-}
 
 });
 </script>
