@@ -1,8 +1,8 @@
 {
   "name": "V1-HiveMq_Server",
   "short_name": "V1-HiveMq_Server",
-  "start_url": "/MYHOME_HiveMQ_SERVER/",
-  "scope": "/MYHOME_HiveMQ_SERVER/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0B1D26",
   "theme_color": "#00e676",
