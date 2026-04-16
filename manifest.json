@@ -1,8 +1,8 @@
 {
   "name": "Casa Inteligente Montenegro",
-  "short_name": "Casa",
-  "start_url": "/MYHOME/",
-  "scope": "/MYHOME/",
+  "short_name": "V1-HiveMq_Server",
+  "start_url": "/MYHOME_HiveMQ_SERVER/",
+  "scope": "/MYHOME_HiveMQ_SERVER/",
   "display": "standalone",
   "background_color": "#0B1D26",
   "theme_color": "#00e676",
